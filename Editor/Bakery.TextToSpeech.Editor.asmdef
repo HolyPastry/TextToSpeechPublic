@@ -1,0 +1,16 @@
+{
+    "name": "Bakery.TextToSpeech.Editor",
+    "rootNamespace": "Bakery.TextToSpeech",
+    "references": [
+        "GUID:fef0e40154de34347991e7190ae24cf9"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

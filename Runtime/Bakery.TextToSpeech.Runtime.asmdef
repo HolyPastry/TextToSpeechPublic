@@ -1,0 +1,14 @@
+{
+    "name": "Bakery.TextToSpeech.Runtime",
+    "rootNamespace": "Bakery.TextToSpeech",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,12 @@
+{
+    "name": "com.bakery.texttospeech",
+    "version": "0.1.0",
+    "displayName": "Text To Speech",
+    "description": "Generate speech from text on the fly with smart caching along the way.",
+    "author": {
+        "name": "Sebastien Berton",
+        "email": "sebasti1.berton@gmail.com",
+        "url": "https://holypastry.com"
+    },
+    "hideInEditor": false
+}
