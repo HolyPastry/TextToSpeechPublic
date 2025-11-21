@@ -12,7 +12,7 @@ namespace Bakery.TextToSpeech
     public class TTSManager : MonoBehaviour
     {
         [SerializeField] private TTSVoiceParams _voiceParams;
-        [SerializeField] private bool _verboseMode;
+        [SerializeField] private int _verboseMode;
         [SerializeField] private int _cacheSize = 1000;
         [SerializeField] private int _jobQueueSize = 10000;
         private readonly List<long> _jobs = new();
@@ -39,16 +39,27 @@ namespace Bakery.TextToSpeech
             TTSServices.LoadVoice = PreloadVoice;
             TTSServices.WaitForVoice = WaitForVoice;
             TTSServices.GetLoadedClip = GetAudioClip;
-            Verbose = _verboseMode ? Debug.Log : delegate { };
+            Verbose = VerboseHandler;
         }
 
-        private static Action<string> Verbose = delegate { };
+        private void VerboseHandler(int level, string message)
+        {
+            if (_verboseMode < level) return;
+
+            if (_verboseMode == 1)
+                Debug.LogWarning(message);
+            else
+                Debug.Log(message);
+
+        }
+
+        private static Action<int, string> Verbose = delegate { };
 
         private static void CreateTTSDirectory()
         {
             if (!Directory.Exists(TTSServices.PersistentFolder))
             {
-                Verbose("TTS - Creating Persistent Folder");
+                Verbose(3, "TTS - Creating Persistent Folder");
                 Directory.CreateDirectory(TTSServices.PersistentFolder);
             }
         }
@@ -58,15 +69,15 @@ namespace Bakery.TextToSpeech
             _failedJobs.Remove(jobId);
             if (!_cache.TryGetValue(jobId, out AudioClip audioClip))
             {
-                Debug.LogWarning($"TTS - {jobId} - AudioClip not cached");
+                Verbose(1, $"TTS - {jobId} - AudioClip not cached");
                 return null;
             }
             if (audioClip != null)
             {
-                Verbose($"TTS - {jobId} - AudioClip retrieved.");
+                Verbose(2, $"TTS - {jobId} - AudioClip retrieved.");
                 return audioClip;
             }
-            Debug.LogWarning($"TTS - {jobId} - AudioClip unexpectedly came back null.");
+            Verbose(1, $"TTS - {jobId} - AudioClip unexpectedly came back null.");
             return null;
         }
 
@@ -80,10 +91,9 @@ namespace Bakery.TextToSpeech
         {
             if (line.Trim().Length == 0)
             {
-                Debug.LogWarning("Text is empty");
+                Verbose(1, "Text is empty");
                 return -1;
             }
-
             CullCache();
             CullJobs();
 
@@ -102,7 +112,7 @@ namespace Bakery.TextToSpeech
             if (_jobs.Count < _jobQueueSize)
                 return;
 
-            Verbose($"TTS - Job queue size exceeded: {_jobs.Count}, culling oldest jobs");
+            Verbose(3, $"TTS - Job queue size exceeded: {_jobs.Count}, culling oldest jobs");
 
             while (_jobs.Count > _jobQueueSize)
             {
@@ -118,7 +128,7 @@ namespace Bakery.TextToSpeech
             if (_cache.Count < _cacheSize)
                 return;
 
-            Verbose($"TTS - Cache size exceeded: {_cache.Count}, culling oldest entries");
+            Verbose(3, $"TTS - Cache size exceeded: {_cache.Count}, culling oldest entries");
 
             while (_cache.Count > _cacheSize)
             {
@@ -133,17 +143,18 @@ namespace Bakery.TextToSpeech
             AudioClip audioClip;
             if (File.Exists(TTSServices.StreamingFilePath(filename)))
             {
-                Verbose($"TTS - {jobId} - found in StreamingAssets: {text}");
+                Verbose(3, $"TTS - {jobId} - found in StreamingAssets: {text}");
                 audioClip = await TTSServices.LoadAudioClipFromLocal(TTSServices.StreamingFilePath(filename));
             }
             else if (File.Exists(TTSServices.PersistentFilePath(filename)))
             {
-                Verbose($"TTS - {jobId} - found in PersistentData: {text}");
+                Verbose(3, $"TTS - {jobId} - found in PersistentData: {text}");
                 audioClip = await TTSServices.LoadAudioClipFromLocal(TTSServices.PersistentFilePath(filename));
             }
             else
             {
-                Verbose($"TTS - {jobId} - awaits service availability");
+
+                Verbose(3, $"TTS - {jobId} - awaits service availability");
                 await ServiceIsAvailable();
                 _jobs.Add(jobId);
                 audioClip = await CreateAudio(jobId, filename, text, voiceData.voiceId);
@@ -154,7 +165,7 @@ namespace Bakery.TextToSpeech
                 _cache.Add(jobId, audioClip);
             else
             {
-                Verbose($"TTS - {jobId} - Failed to create audio clip for: {text}");
+                Verbose(1, $"TTS - {jobId} - Failed to create audio clip for: {text}");
                 _failedJobs.Add(jobId);
             }
 
@@ -186,14 +197,14 @@ namespace Bakery.TextToSpeech
                 text = text,
                 id = _voiceParams.CompanyName + "-" + _voiceParams.ProductName + "-" + _voiceParams.ProjectId
             };
-            Verbose($"TTS - {jobId} - Sending audio request");
+            Verbose(2, $"TTS - {jobId} - Sending audio request");
             byte[] mp3Data = await SendRequest(@params, _voiceParams.Uri);
             if (mp3Data == null)
             {
-                Debug.LogWarning("Failed to get mp3 data from the clouds: " + voiceId);
+                Verbose(1, "Failed to get mp3 data from the clouds: " + voiceId);
                 return null;
             }
-            Verbose($"TTS - {jobId} - Received {filename}, saving to Disk");
+            Verbose(2, $"TTS - {jobId} - Received {filename}, saving to Disk");
             SaveMp3ToPersistentData(filename, mp3Data);
             return await TTSServices.LoadAudioClipFromLocal(TTSServices.PersistentFilePath(filename));
         }
