@@ -14,22 +14,22 @@ namespace Bakery.TextToSpeech
         [MenuItem("Bakery/TextToSpeech/Convert TTS to Streaming")]
         public static void ConvertTTSToResource()
         {
-            ConvertToStreaming(TTSServices.TTSFolder);
+            ConvertToStreaming(TTSManager.TTSFolder);
         }
 
         [MenuItem("Bakery/TextToSpeech/DeleteStreamingAssets")]
         public static void DeleteStreamingAssets()
         {
-            if (Directory.Exists(Application.streamingAssetsPath + "/" + TTSServices.TTSFolder))
-                Directory.Delete(Application.streamingAssetsPath + "/" + TTSServices.TTSFolder, true);
+            if (Directory.Exists(Application.streamingAssetsPath + "/" + TTSManager.TTSFolder))
+                Directory.Delete(Application.streamingAssetsPath + "/" + TTSManager.TTSFolder, true);
             AssetDatabase.Refresh();
         }
 
         [MenuItem("Bakery/TextToSpeech/DeletePersistentData")]
         public static void DeletePersistentData()
         {
-            if (Directory.Exists(Application.persistentDataPath + "/" + TTSServices.TTSFolder))
-                Directory.Delete(Application.persistentDataPath + "/" + TTSServices.TTSFolder, true);
+            if (Directory.Exists(Application.persistentDataPath + "/" + TTSManager.TTSFolder))
+                Directory.Delete(Application.persistentDataPath + "/" + TTSManager.TTSFolder, true);
         }
 
         public static void ConvertToStreaming(string folderName)
@@ -52,13 +52,13 @@ namespace Bakery.TextToSpeech
 
         public static void ConvertFileToStreaming(string filePath, bool overrideFile)
         {
-            CreateDirectoryIfMissing(TTSServices.TTSFolder);
+            CreateDirectoryIfMissing(TTSManager.TTSFolder);
 
             string filename = Path.GetFileName(filePath);
-            if (File.Exists(TTSServices.StreamingFilePath(filename)))
+            if (File.Exists(TTSManager.StreamingFilePath(filename)))
                 return;
 
-            FileUtil.CopyFileOrDirectory(filePath, TTSServices.StreamingFilePath(filename));
+            FileUtil.CopyFileOrDirectory(filePath, TTSManager.StreamingFilePath(filename));
         }
 
         private static void CreateDirectoryIfMissing(string folderName)

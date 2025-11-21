@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -9,58 +10,81 @@ using UnityEngine.Networking;
 
 namespace Bakery.TextToSpeech
 {
-    public class TTSManager : MonoBehaviour
+
+    public class TTSManager
     {
-        [SerializeField] private TTSVoiceParams _voiceParams;
-        [SerializeField] private int _verboseMode;
-        [SerializeField] private int _cacheSize = 1000;
-        [SerializeField] private int _jobQueueSize = 10000;
+        [SerializeField] private TTSSettings _settings;
+
         private readonly List<long> _jobs = new();
         private readonly List<long> _failedJobs = new();
         private readonly Dictionary<long, AudioClip> _cache = new();
 
         private long _jobIdCounter = 0;
 
-        void Awake()
+        public TTSManager()
         {
             CreateTTSDirectory();
+            _settings = Resources.Load<TTSSettings>("TTSSettings");
+            if (_settings == null)
+                Debug.LogError("TTSSettings asset not found in Resources folder.");
         }
 
-        void OnDisable()
+        private void Verbose(int level, string message)
         {
-            TTSServices.WaitForVoice = delegate { Debug.Log("AIVoice Manager has been unloaded"); return null; };
-            TTSServices.GetLoadedClip = delegate { Debug.Log("AIVoice Manager has been unloaded"); return null; };
-            TTSServices.LoadVoice = delegate { Debug.Log("AIVoice Manager has been unloaded"); return -1; };
-            Verbose = delegate { };
-        }
+            if (_settings.VerboseMode < level) return;
 
-        void OnEnable()
-        {
-            TTSServices.LoadVoice = PreloadVoice;
-            TTSServices.WaitForVoice = WaitForVoice;
-            TTSServices.GetLoadedClip = GetAudioClip;
-            Verbose = VerboseHandler;
-        }
-
-        private void VerboseHandler(int level, string message)
-        {
-            if (_verboseMode < level) return;
-
-            if (_verboseMode == 1)
+            if (_settings.VerboseMode == 1)
                 Debug.LogWarning(message);
             else
                 Debug.Log(message);
 
         }
+        public static string TTSFolder = "TTS";
+        public static string PersistentFolder => Path.Combine(Application.persistentDataPath, TTSFolder);
+        public static string StreamingFolder => Path.Combine(Application.streamingAssetsPath, TTSFolder);
 
-        private static Action<int, string> Verbose = delegate { };
+        public static string PersistentFilePath(string filename)
+            => Path.Combine(PersistentFolder, $"{filename}.mp3");
 
-        private static void CreateTTSDirectory()
+        public static string StreamingFilePath(string filename)
+            => Path.Combine(StreamingFolder, $"{filename}.mp3");
+
+
+
+        public static string TextToFileName(string text, string voiceId)
         {
-            if (!Directory.Exists(TTSServices.PersistentFolder))
+            text = voiceId.ToString() + text.ToLower();
+            using var md5 = MD5.Create();
+            byte[] hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text));
+            return BitConverter.ToString(hash).Replace("-", "").ToLower();
+        }
+
+        public static async Task<AudioClip> LoadAudioClipFromLocal(string filename)
+        {
+            //Debug.Log($"Loading from: {filename}");
+            using var unityWebRequest =
+                UnityWebRequestMultimedia.GetAudioClip(new Uri(filename), AudioType.MPEG);
+
+            var operation = unityWebRequest.SendWebRequest();
+
+            while (!operation.isDone) await Task.Yield();
+            if (operation.webRequest.error != null)
+                Debug.LogWarning(operation.webRequest.error);
+
+            return DownloadHandlerAudioClip.GetContent(unityWebRequest);
+        }
+
+        public static bool FileExistsLocally(string filename)
+        {
+            return File.Exists(StreamingFilePath(filename))
+               || File.Exists(PersistentFilePath(filename));
+        }
+        private void CreateTTSDirectory()
+        {
+            if (!Directory.Exists(TTSManager.PersistentFolder))
             {
                 Verbose(3, "TTS - Creating Persistent Folder");
-                Directory.CreateDirectory(TTSServices.PersistentFolder);
+                Directory.CreateDirectory(TTSManager.PersistentFolder);
             }
         }
 
@@ -87,6 +111,31 @@ namespace Bakery.TextToSpeech
                 () => _failedJobs.Contains(jobId) || _cache.ContainsKey(jobId));
         }
 
+        public async Task<AudioClip> GetVoiceAsync(TTSVoiceData voiceData, string line)
+        {
+            if (line.Trim().Length == 0)
+            {
+                Verbose(1, "Text is empty");
+                return null;
+            }
+            CullCache();
+            CullJobs();
+
+            var filename = TTSManager.TextToFileName(line, voiceData.voiceId);
+
+            long jobId = _jobIdCounter++;
+
+            //Debug.Log("NumJObInProgress: " + _jobs.Count);
+            await PreLoadVoiceAsync(jobId, voiceData, line, filename);
+            while (!_failedJobs.Contains(jobId) && !_cache.ContainsKey(jobId))
+                await Task.Yield();
+
+            if (_failedJobs.Contains(jobId))
+                return null;
+
+            return _cache[jobId];
+        }
+
         private long PreloadVoice(TTSVoiceData voiceData, string line)
         {
             if (line.Trim().Length == 0)
@@ -97,24 +146,23 @@ namespace Bakery.TextToSpeech
             CullCache();
             CullJobs();
 
-            var filename = TTSServices.TextToFileName(line, voiceData.voiceId);
+            var filename = TTSManager.TextToFileName(line, voiceData.voiceId);
 
             long jobId = _jobIdCounter++;
 
-            //Debug.Log("NumJObInProgress: " + _jobs.Count);
-            PreLoadVoiceAsync(jobId, voiceData, line, filename);
+            _ = PreLoadVoiceAsync(jobId, voiceData, line, filename);
 
             return jobId;
         }
 
         private void CullJobs()
         {
-            if (_jobs.Count < _jobQueueSize)
+            if (_jobs.Count < _settings.JobQueueSize)
                 return;
 
             Verbose(3, $"TTS - Job queue size exceeded: {_jobs.Count}, culling oldest jobs");
 
-            while (_jobs.Count > _jobQueueSize)
+            while (_jobs.Count > _settings.JobQueueSize)
             {
                 long oldestJobId = _jobs[0];
                 _jobs.RemoveAt(0);
@@ -125,31 +173,31 @@ namespace Bakery.TextToSpeech
 
         private void CullCache()
         {
-            if (_cache.Count < _cacheSize)
+            if (_cache.Count < _settings.CacheSize)
                 return;
 
             Verbose(3, $"TTS - Cache size exceeded: {_cache.Count}, culling oldest entries");
 
-            while (_cache.Count > _cacheSize)
+            while (_cache.Count > _settings.CacheSize)
             {
                 long oldestKey = _cache.Keys.Min();
                 _cache.Remove(oldestKey);
             }
         }
 
-        private async void PreLoadVoiceAsync(long jobId, TTSVoiceData voiceData, string text, string filename)
+        private async Task<long> PreLoadVoiceAsync(long jobId, TTSVoiceData voiceData, string text, string filename)
         {
 
             AudioClip audioClip;
-            if (File.Exists(TTSServices.StreamingFilePath(filename)))
+            if (File.Exists(TTSManager.StreamingFilePath(filename)))
             {
                 Verbose(3, $"TTS - {jobId} - found in StreamingAssets: {text}");
-                audioClip = await TTSServices.LoadAudioClipFromLocal(TTSServices.StreamingFilePath(filename));
+                audioClip = await TTSManager.LoadAudioClipFromLocal(TTSManager.StreamingFilePath(filename));
             }
-            else if (File.Exists(TTSServices.PersistentFilePath(filename)))
+            else if (File.Exists(TTSManager.PersistentFilePath(filename)))
             {
                 Verbose(3, $"TTS - {jobId} - found in PersistentData: {text}");
-                audioClip = await TTSServices.LoadAudioClipFromLocal(TTSServices.PersistentFilePath(filename));
+                audioClip = await TTSManager.LoadAudioClipFromLocal(TTSManager.PersistentFilePath(filename));
             }
             else
             {
@@ -168,6 +216,7 @@ namespace Bakery.TextToSpeech
                 Verbose(1, $"TTS - {jobId} - Failed to create audio clip for: {text}");
                 _failedJobs.Add(jobId);
             }
+            return jobId;
 
         }
 
@@ -195,10 +244,10 @@ namespace Bakery.TextToSpeech
                 filename = filename,
                 voice = voiceId,
                 text = text,
-                id = _voiceParams.CompanyName + "-" + _voiceParams.ProductName + "-" + _voiceParams.ProjectId
+                id = _settings.CompanyName + "-" + _settings.ProductName + "-" + _settings.ProjectId
             };
             Verbose(2, $"TTS - {jobId} - Sending audio request");
-            byte[] mp3Data = await SendRequest(@params, _voiceParams.Uri);
+            byte[] mp3Data = await SendRequest(@params, _settings.Uri);
             if (mp3Data == null)
             {
                 Verbose(1, "Failed to get mp3 data from the clouds: " + voiceId);
@@ -206,7 +255,7 @@ namespace Bakery.TextToSpeech
             }
             Verbose(2, $"TTS - {jobId} - Received {filename}, saving to Disk");
             SaveMp3ToPersistentData(filename, mp3Data);
-            return await TTSServices.LoadAudioClipFromLocal(TTSServices.PersistentFilePath(filename));
+            return await TTSManager.LoadAudioClipFromLocal(TTSManager.PersistentFilePath(filename));
         }
 
         private static async Task<byte[]> SendRequest(WebRequestParams @params, string uri)
@@ -241,7 +290,7 @@ namespace Bakery.TextToSpeech
         private void SaveMp3ToPersistentData(string filename, byte[] mp3Data)
         {
 
-            string path = TTSServices.PersistentFilePath(filename);
+            string path = TTSManager.PersistentFilePath(filename);
             File.WriteAllBytes(path, mp3Data);
             // Debug.Log($"MP3 file saved to: {path}");
         }
