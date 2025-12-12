@@ -88,7 +88,7 @@ namespace Bakery.TextToSpeech
             }
         }
 
-        private AudioClip GetAudioClip(long jobId)
+        public AudioClip GetAudioClip(long jobId)
         {
             _failedJobs.Remove(jobId);
             if (!_cache.TryGetValue(jobId, out AudioClip audioClip))
@@ -105,7 +105,7 @@ namespace Bakery.TextToSpeech
             return null;
         }
 
-        private CustomYieldInstruction WaitForVoice(long jobId)
+        public CustomYieldInstruction WaitForVoice(long jobId)
         {
             return new WaitUntil(
                 () => _failedJobs.Contains(jobId) || _cache.ContainsKey(jobId));
@@ -126,7 +126,7 @@ namespace Bakery.TextToSpeech
             long jobId = _jobIdCounter++;
 
             //Debug.Log("NumJObInProgress: " + _jobs.Count);
-            await PreLoadVoiceAsync(jobId, voiceData, line, filename);
+            await PreLoadVoiceAsync(jobId, voiceData.voiceId, line, filename);
             while (!_failedJobs.Contains(jobId) && !_cache.ContainsKey(jobId))
                 await Task.Yield();
 
@@ -136,7 +136,7 @@ namespace Bakery.TextToSpeech
             return _cache[jobId];
         }
 
-        private long PreloadVoice(TTSVoiceData voiceData, string line)
+        public long PreloadVoice(string voiceId, string line)
         {
             if (line.Trim().Length == 0)
             {
@@ -146,13 +146,18 @@ namespace Bakery.TextToSpeech
             CullCache();
             CullJobs();
 
-            var filename = TTSManager.TextToFileName(line, voiceData.voiceId);
+            var filename = TTSManager.TextToFileName(line, voiceId);
 
             long jobId = _jobIdCounter++;
 
-            _ = PreLoadVoiceAsync(jobId, voiceData, line, filename);
+            _ = PreLoadVoiceAsync(jobId, voiceId, line, filename);
 
             return jobId;
+        }
+
+        public long PreloadVoice(TTSVoiceData voiceData, string line)
+        {
+            return PreloadVoice(voiceData.voiceId, line);
         }
 
         private void CullJobs()
@@ -185,7 +190,7 @@ namespace Bakery.TextToSpeech
             }
         }
 
-        private async Task<long> PreLoadVoiceAsync(long jobId, TTSVoiceData voiceData, string text, string filename)
+        private async Task<long> PreLoadVoiceAsync(long jobId, string voiceId, string text, string filename)
         {
 
             AudioClip audioClip;
@@ -205,7 +210,7 @@ namespace Bakery.TextToSpeech
                 Verbose(3, $"TTS - {jobId} - awaits service availability");
                 await ServiceIsAvailable();
                 _jobs.Add(jobId);
-                audioClip = await CreateAudio(jobId, filename, text, voiceData.voiceId);
+                audioClip = await CreateAudio(jobId, filename, text, voiceId);
                 _jobs.Remove(jobId);
             }
 
