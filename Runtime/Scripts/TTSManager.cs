@@ -13,7 +13,7 @@ namespace Bakery.TextToSpeech
 
     public class TTSManager
     {
-        [SerializeField] private TTSSettings _settings;
+        private TTSSettings _settings;
 
         private readonly List<long> _jobs = new();
         private readonly List<long> _failedJobs = new();
@@ -31,6 +31,7 @@ namespace Bakery.TextToSpeech
 
         private void Verbose(int level, string message)
         {
+            if (_settings == null) return;
             if (_settings.VerboseMode < level) return;
 
             if (_settings.VerboseMode == 1)
