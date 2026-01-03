@@ -23,10 +23,10 @@ namespace Bakery.TextToSpeech
 
         public TTSManager()
         {
-            CreateTTSDirectory();
             _settings = Resources.Load<TTSSettings>("TTSSettings");
             if (_settings == null)
                 Debug.LogError("TTSSettings asset not found in Resources folder.");
+            CreateTTSDirectory();
         }
 
         private void Verbose(int level, string message)
